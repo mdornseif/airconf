@@ -190,10 +190,24 @@ question = s.encode_request ('GETREQUEST', [encoded_objid], [])
 answer = s.send_and_receive (question)
 (encoded_objids, encoded_values) = s.decode_response (answer)
 objids = map (s.decode_value, encoded_objids)
-print objids
+#print objids
 
 values = map (s.decode_value, encoded_values)
-print values
+#print values
+
+
+# get configuration data
+
+'''Rop writes:
+Reading from flash
+
+Reading is done by issuing SNMP get-requests for
+1.3.6.1.4.1.762.2.2.1.1.n. This request will then return a
+string containing a 256 byte block having offset (n - 1) *
+256. Example: to read the configuration block, one would issue SNMP
+get-requests for 1.3.6.1.4.1.762.2.2.1.1.1 through
+1.3.6.1.4.1.762.2.2.1.1.68.
+'''
 
 s = session.session ('172.17.0.8', '2407')
 data = ''
@@ -206,24 +220,33 @@ for i in range(1, 69):
     values = map (s.decode_value, encoded_values)
     data += values[0]
 
+fd =open('config.dat', 'w')
+fd.write(data)
+fd.close()
 
 datal = list(data)
 # 'Mac addresses access control count'
-datal[15 * 256 + 8*16 + 7] = chr(128)
+#datal[15 * 256 + 8*16 + 7] = chr(128)
+#datal[15 * 256 + 8*16 + 7] = chr(1)
 # Mac addresses access control addresses'
-datal[15*256+8*16+10:15*256+8*16+10+(128*6)] = ['A'] * (128*6)
+#datal[15*256+8*16+10:15*256+8*16+10+(128*6)] = ['A'] * (128*6)
 # 'Host names for access control'
-datal[28*256+12*16+8:28*256+12*16+8+(128*20)] = ['A'] * (128*20)
-data = ''.join(datal)
+#datal[28*256+12*16+8:28*256+12*16+8+(128*20)] = ['A'] * (128*20)
 
+#datal[7*16+6:7*16+12] = list('public')
+
+
+# delete date "after the end" and calculate checksum
+#datal[0x43b5:] = ['\0x00'] * 256 
 checksum1 = 0
 for x in data[:0x43b6]:
     checksum1 += ord(x)
 checksum2 = checksum1 + ((checksum1 >> 8) & 0xff) + (checksum1 & 0xff)
-#data[0x43b6] = checksum1 & 0xff
-#data[0x43b7] = (checksum1 >> 8) & 0xff
-#data[0x43b8] = checksum2 & 0xff;
-#data[0x43b9] = (checksum2 >> 8) & 0xff;
+datal[0x43b6] = chr(checksum1 & 0xff)
+datal[0x43b7] = chr((checksum1 >> 8) & 0xff)
+datal[0x43b8] = chr(checksum2 & 0xff)
+datal[0x43b9] = chr((checksum2 >> 8) & 0xff)
+data = ''.join(datal)
     
 # read items out of data
 airport = {}
@@ -231,7 +254,7 @@ for k in image.keys():
     (pos, length, desc, func) = image[k]
     airport[k] = apply(func, [data[pos:pos + length]])
 
-
+ 
 for l in fixups.keys():
     val = ''
     (fixuplist, func) = fixups[l]
@@ -243,41 +266,118 @@ for l in fixups.keys():
 for k in airport.keys():
     print "%s: %s" % (k, airport[k])
 
-   def run (self, objids, values):
-        """Pass SNMP agent for one or more Object ID's. The objid
-           argument should be a list of strings where each string
-           represents a Object ID in dotted numbers notation (e.g.
-           ['.1.3.6.1.4.1.307.3.2.1.1.1.4.1']).
-        """   
-        # Convert string type Object ID's into numeric representation
-        numeric_objids = map (self.str2nums, objids)
 
-        # BER encode SNMP Object ID's to query
-        encoded_objids = map (self.encode_oid, numeric_objids)
 
+s.close()
+del(s)
+
+def writeconf(host, community, data):
+    '''Rop writes:
+
+    Writing to flash
+
+    Writing to flash is done by writing to
+    1.3.6.1.4.1.762.2.3.1.1.&ltn>, writing the 256 bytes starting at
+    position (n - 1) * 256. The write is not actually done until the
+    entire block to be written is received, and the length of the
+    block is written as an integer to 1.3.6.1.4.1.762.2.1.2.0 and
+    1.3.6.1.4.1.762.2.1.3.0. The unit then checks a checksum in the
+    data, encoded as two bytes directly after the last byte. This
+    checksum is the lowest 16 bits of the sum of all the bytes to be
+    written, LSB first. If the checksum matches, the appropriate part
+    of the flash is overwritten with the new data, and the unit
+    reboots.
+
+    Both flash-reads and writes need to be done with the read/write
+    community. An attempt to read them with 'public' fails on a 'no
+    such name' error.
+    '''
+
+
+    print "*** writing"
+    s = session.session (host, community)
+    for i in range(0, 68):
+        print '* block', i, i*256, (i+1)*256, len(data[i*256:(i+1)*256]),
+
+        encoded_objid = s.encode_oid ([1, 3, 6, 1, 4, 1, 762, 2, 3, 1, 1, i+1])
+    
         # BER encode the values of MIB variables (assuming they are strings!)
-        encoded_values = map (self.encode_string, values)
+        encoded_value = s.encode_string(data[i*256:(i+1)*256])
 
         # Build a complete SNMP message of type 'SETREQUEST', pass it lists
         # of BER encoded Object ID's and MIB variables' values associated
         # with these Object ID's to set at SNMP agent.
-        question = self.encode_request ('SETREQUEST', encoded_objids, encoded_values)
-
+        question = s.encode_request('SETREQUEST', [encoded_objid], [encoded_value])
+        
         # Try to send SNMP message to SNMP agent and receive a response.
-        answer = self.send_and_receive (question)
-
+        answer = s.send_and_receive (question)
+        
         # As we get a response from SNMP agent, try to disassemble SNMP reply
         # and extract two lists of BER encoded SNMP Object ID's and 
         # associated values).
-        (encoded_objids, encoded_values) = self.decode_response (answer)
-
+        (encoded_objids, encoded_values) = s.decode_response (answer)
+        
         # Decode BER encoded Object ID.
-        objids = map (self.decode_value, encoded_objids)
-
+        objids = map (s.decode_value, encoded_objids)
+        
         # Decode BER encoded values associated with Object ID's.
-        values = map (self.decode_value, encoded_values)
+        values = map (s.decode_value, encoded_values)
 
-        # Return a tuple of two lists holding Object ID's and associated
-        # values extracted from SNMP agent reply.
-        return (objids, values)
 
+    print "\n* writing to flash"
+    encoded_objid = s.encode_oid ([1,3,6,1,4,1,762,2,1,2,0])
+    
+    # BER encode the values of MIB variables (assuming they are strings!)
+    encoded_value = s.encode_integer(17336)
+    
+    # Build a complete SNMP message of type 'SETREQUEST', pass it lists
+    # of BER encoded Object ID's and MIB variables' values associated
+    # with these Object ID's to set at SNMP agent.
+    question = s.encode_request('SETREQUEST', [encoded_objid], [encoded_value])
+    
+    # Try to send SNMP message to SNMP agent and receive a response.
+    answer = s.send_and_receive (question)
+    
+    # As we get a response from SNMP agent, try to disassemble SNMP reply
+    # and extract two lists of BER encoded SNMP Object ID's and 
+    # associated values).
+    (encoded_objids, encoded_values) = s.decode_response (answer)
+    
+    # Decode BER encoded Object ID.
+    objids = map (s.decode_value, encoded_objids)
+    
+    # Decode BER encoded values associated with Object ID's.
+    values = map (s.decode_value, encoded_values)
+    
+    # Return a tuple of two lists holding Object ID's and associated
+    # values extracted from SNMP agent reply.
+    
+    encoded_objid = s.encode_oid ([1,3,6,1,4,1,762,2,1,3,0])
+    
+    # BER encode the values of MIB variables (assuming they are strings!)
+    encoded_value = s.encode_integer(17336)
+    
+    # Build a complete SNMP message of type 'SETREQUEST', pass it lists
+    # of BER encoded Object ID's and MIB variables' values associated
+    # with these Object ID's to set at SNMP agent.
+    question = s.encode_request('SETREQUEST', [encoded_objid], [encoded_value])
+    
+    # Try to send SNMP message to SNMP agent and receive a response.
+    answer = s.send_and_receive (question)
+    
+    # As we get a response from SNMP agent, try to disassemble SNMP reply
+    # and extract two lists of BER encoded SNMP Object ID's and 
+    # associated values).
+    (encoded_objids, encoded_values) = s.decode_response (answer)
+        
+    # Decode BER encoded Object ID.
+    objids = map (s.decode_value, encoded_objids)
+    
+    # Decode BER encoded values associated with Object ID's.
+    values = map (s.decode_value, encoded_values)
+    
+    # Return a tuple of two lists holding Object ID's and associated
+    # values extracted from SNMP agent reply.
+
+
+writeconf('172.17.0.8', '2407', data)

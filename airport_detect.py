@@ -1,4 +1,4 @@
-""" $Id: airport_detect.py,v 1.2 2002/01/23 13:14:56 drt Exp $
+""" $Id: airport_detect.py,v 1.3 2002/01/23 20:48:56 drt Exp $
 
 Find all Apple Airport APs on a subnet.
 
@@ -8,6 +8,39 @@ replies. If no reply is recived for more than 2 seconds this module
 stops listening.
 
 Based on osubcast.c by Bill Fenner <fenner@research.att.com>.
+
+Rop writes:
+
+Discovery of Base Stations
+
+Discovery is done by the configuration program by sending a broadcast
+UDP packet to port 192. The packet should contains 0x01, followed by
+115 times 0x00, making a total of decimal 116 bytes (hex 74)
+
+The Base Stations then respond with a UDP packet from port 192, back
+to the originating IP-number and port. This packet is built as
+follows:
+
+ 
+offset(hex)     length          meaning 
+00              1               always 01 
+01              1               always 01 
+03              1               00 means normal mode,  
+                                01 means virgin 
+24              6               MAC-address of Base 
+2C              4               IP-number of Base 
+30              ?               Name of Base,  
+                                zero padded at right 
+50              4               1/100th of seconds since  
+                                boot 
+54              ?               Version and serial no. of 
+                                Base Station, zero  
+                                terminated, maximum 20 hex 
+                                bytes. 
+
+The name of a virgin base station is always XX-XX-XX-XX-XX-XX, where
+the Xs are replaced with the MAC-address of the Base.
+
 
 You might be able to find more Information at http://c0re.jp/
 
