@@ -1,20 +1,25 @@
-"""Handling of Communication with Apple Airport 1 (Graphite).
+# $Id: airport.py,v 1.2 2002/01/26 21:59:15 drt Exp $
 
-  --drt@un.bewaff.net
+"""Handling of Communication with Apple Airport Base Station 1 (Graphite).
+
+  --drt@un.bewaff.net - http://c0re.jp/c0de/airconf/
 """
 
-import sys
+import sys, socket, select
+import pprint
 from pysnmp import session
 
+# OIDs used by the Base
 karl = '.1.3.6.1.4.1.762'
 conf = karl + ".2.3.1.1"
 
-
 # various helper functions to mangle data
 def ip4(s):
+    '''Convert bitstring to an dotted-quard IP address.'''
     return '.'.join(map(str, map(ord, s)))
 
 def string0(s):
+    '''Convert 0-padded fixed length string to a python string.'''
     if len(s) == 0:
         return ''
     if s[-1] == '\x00':
@@ -22,13 +27,35 @@ def string0(s):
     return s
     
 def short(s):
+    '''Convert char to a unsigned short value.'''
     return ord(s)
 
 def litteendianint(s):
-    return ord(s[1]) + (ord(s[0]) << 8)
+    '''Convert little-endian notation bitstring to an integer.'''
+    return ord(s[0]) + (ord(s[1]) << 8)
+
+def mac(s):
+    '''Convert bitstring to ethernet MAC address.'''
+    l = map(lambda x: hex(ord(x))[2:], list(s))
+    return ':'.join(l)
 
 def raw(s):
+    '''Return data unaltered'''
     return s
+
+
+# various helper functions
+
+def macstrtobin(s):
+    '''Convert a MAC in "XX:XX:XX:XX:XX:XX" format to binary representation.'''
+    try:
+        bytes = s.split(':')
+        if len(bytes) != 6:
+            raise
+        bytes = map(lambda x: chr(int(x, 16)), bytes)
+    except:
+        raise ValueError, 'A MAC address must consist of exactly 6 Hex Numbers (48 bits), like "FF:FF:FF:FF:FF:FF", 2%r" does not qualify' % (s)
+    return ''.join(bytes)
 
 
 '''http://edge.mcs.drexel.edu/GICL/people/sevy/airport/source/info.zip
@@ -48,7 +75,7 @@ initial index of 0).
 
 '''
 
-# definition of the configuration memory block
+# definition of the raw configuration memory block
 image = {'copyright': (6, 68, {}, string0),
          'public': (7 * 16 + 6, 6, {}, string0),
          'set password (?)': (9 * 16 + 6, 9, {}, string0),
@@ -86,7 +113,7 @@ image = {'copyright': (6, 68, {}, string0),
                               0x84: 'DHCP only, plus port mapping (firewall functionality?)',
                               0x86: 'DHCP and NAT, with port-mapping'}, short),
          'Base station IP address': (4 * 256 + 6 * 16 + 10, 4, {}, ip4),
-         'Base station partial mask': (4 * 256 + 6 * 16 + 14, 2, {}, repr),
+         'Base station partial mask': (4 * 256 + 6 * 16 + 14, 2, {}, raw),
          'Router IP address': (4 * 256 + 7 * 16, 4, {}, ip4),
          'Router Netmask': (4 * 256 + 7 * 16 + 4, 4, {}, ip4),
          'Contact person name': (4 * 256 + 8 * 16 + 12, 64, {}, string0),
@@ -102,13 +129,13 @@ image = {'copyright': (6, 68, {}, string0),
          'Wireless LAN IP address when NAT enabled': (13 * 256 + 2*16 + 10, 4, {}, ip4),
          'IP address when connected through Ethernet': (13 * 256 +4*16 + 10, 4, {}, ip4),
          'Mac addresses access control count': (15 * 256 + 8*16 + 8, 2, {}, litteendianint), 
-         'Mac addresses access control addresses': (15 * 256 + 8*16 + 10, 497 * 6, {}, repr),
-         'Host names for access control': (28 * 256 + 12*16 + 8, 497 * 20, {}, repr),
-         'Checksum 1':  (256 * 67 + 11*16 + 6, 2, {}, repr),
-         'Checksum 2':  (256 * 67 + 11*16 + 8, 2, {}, repr)
+         'Mac addresses access control addresses': (15 * 256 + 8*16 + 10, 497 * 6, {}, raw),
+         'Host names for access control': (0x1cc8, 497 * 20, {}, raw),
+         'Checksum 1':  (256 * 67 + 11*16 + 6, 2, {}, raw),
+         'Checksum 2':  (256 * 67 + 11*16 + 8, 2, {}, raw)
 }
 
-# table to fix entries scattered arroubd
+# table to fix entries scattered arround in the configuration block
 fixups = {'Network Name': (['Network name 1', 'Network name 2',
                            'Network name 3', 'Network name 4',
                            'Network name 5', 'Network name 6',
@@ -121,9 +148,8 @@ fixups = {'Network Name': (['Network name 1', 'Network name 2',
           'Secondary DNS': (['Secondary DNS 1', 'Secondary DNS 2'], ip4)}
 
 
+# This should be incoperated above but I myself don't really need it.:
 '''
-This should be incoperated:
-
 Encryption flag fields: 
 byte 5*16 + 8
 00 = no encryption
@@ -131,7 +157,6 @@ byte 5*16 + 8
 byte 6*16 + 8
 12 = no encryption
 92 = use encryption
-
 
 Modem timeout, in 10-second chunks: byte 7*16 + 10
 
@@ -149,12 +174,10 @@ US standard = 32 32
 Singapore = 34 37
 Switzerland = 31 35
 
-
 Modem initialization string and phone numbers: byte 12*16 + 10,
 continuation in columns 10 and 11 of subsequent rows
 phone numbers use BCD, with D for space/paren and E for dash
 primary number immediately follows modem init string; secondary number immediately follows primary number
-
 
 .1.3.6.1.4.1.762.2.3.1.1.3Extension of 2, plus:
 Encryption flag field: byte 12*16 + 8
@@ -166,7 +189,6 @@ number of bytes: byte 7*16 + 4
 00 for no encryption
 05 for 40-bit encryption
 key: byte 7*16 + 6
-
 
 
 Port mapping functions: 
@@ -193,7 +215,7 @@ Checksum 2: bytes 11*16 + 8,9:  sum of all previous bytes, including preceding c
 '''
 
 def readconf(host, community):
-    '''reat  configuration data from Airport.
+    '''Read  configuration data from Airport.
 
     Rop writes:
     Reading from flash
@@ -203,17 +225,18 @@ def readconf(host, community):
     containing a 256 byte block having offset (n - 1) * 256. Example:
     to read the configuration block, one would issue SNMP get-requests
     for 1.3.6.1.4.1.762.2.2.1.1.1 through 1.3.6.1.4.1.762.2.2.1.1.68.
-
     '''
 
     s = session.session (host, community)
     data = ''
+
+    # We could be faster if we dont wait for each response before
+    # sending the next one. The apple tool does so.
     for i in range(1, 69):
         encoded_objid = s.encode_oid ([1, 3, 6, 1, 4, 1, 762, 2, 2, 1, 1, i])
-        question = s.encode_request ('GETREQUEST', [encoded_objid], [])
-        answer = s.send_and_receive (question)
-        (encoded_objids, encoded_values) = s.decode_response (answer)
-        objids = map (s.decode_value, encoded_objids)
+        question = s.encode_request('GETREQUEST', [encoded_objid], [])
+        answer = s.send_and_receive(question)
+        (encoded_objids, encoded_values) = s.decode_response(answer)
         values = map (s.decode_value, encoded_values)
         data += values[0]
 
@@ -222,9 +245,11 @@ def readconf(host, community):
     return data
 
 
-#datal[0x96:0x9a] = list('2407')
 
 def calcchecksum(data):
+    '''Calculate the checksum for a given data block
+    and return a copy of the block with the checksum insered.'''
+    
     datal = list(data)
     # delete data "after the end" and calculate checksum
     datal[0x43ba:] = ['\0'] * 70 
@@ -233,6 +258,8 @@ def calcchecksum(data):
         checksum1 += ord(x)
     checksum2 = checksum1 + ((checksum1 >> 8) & 0xff) + (checksum1 & 0xff)
     # uh, checksum 1 seems to be useless ... strange
+    # other people have different opinoions about the right way to
+    # calculate this - this way works for me.
     #datal[0x43b6] = chr(checksum1 & 0xff)
     #datal[0x43b7] = chr((checksum1 >> 8) & 0xff)
     checksum2 = 0
@@ -240,16 +267,49 @@ def calcchecksum(data):
         checksum2 += ord(x)
     datal[0x43b8] = chr(checksum2 & 0xff)
     datal[0x43b9] = chr((checksum2 >> 8) & 0xff)
-    print >>sys.stderr, checksum1, checksum2
     return ''.join(datal)
 
 
+def updateacl(data, acl):
+    '''Update the ACL in a configuration block.'''
+
+    countpos = image['Mac addresses access control count'][0]
+    macpos = image['Mac addresses access control addresses'][0]
+    maclen = image['Mac addresses access control addresses'][1]
+    hostpos = image['Host names for access control'][0]
+    hostlen = image['Host names for access control'][1]
+    datal = list(data)
+    newcount = len(acl)
+    if newcount > maclen:
+        raise ValueError, "ACLs can't be longer than %d entries." % (maclen)
+    newmac = []
+    newname = []
+    for (mac, name) in acl:
+        newmac.extend(macstrtobin(mac))
+        if len(name) > 19:
+            raise ValueError, "Names for ACL entries must be no longer than 19 characters."
+        name = list(name)
+        name.extend(['\0'] * 20)
+        newname.extend(name[:20])
+    # zero out data areas in configuration area
+    datal[macpos:macpos+maclen] = ['\0'] * maclen
+    datal[hostpos:hostpos+hostlen] = ['\0'] * hostlen
+    # write our new data into configuration block
+    datal[macpos:macpos+(newcount*6)] = newmac
+    datal[hostpos:hostpos+(newcount*20)] = newname
+    datal[countpos] = chr(newcount & 0xff)
+    datal[countpos+1] = chr((newcount >> 8) & 0xff)
+    return ''.join(datal)
+
 def parseconf(data):
+    '''Parse the configuration block into a python dictionary.'''
+    
     airport = {}
     for k in image.keys():
         (pos, length, desc, func) = image[k]
         airport[k] = apply(func, [data[pos:pos + length]])
 
+    # fix scattered values
     for l in fixups.keys():
         val = ''
         (fixuplist, func) = fixups[l]
@@ -258,21 +318,38 @@ def parseconf(data):
             del(airport[x])
         airport[l] = apply(func, [val])
 
+    # mangle access control lists into something more readable
+    count = airport['Mac addresses access control count']
+    macs = airport['Mac addresses access control addresses'][:6*count]
+    names = airport['Host names for access control'][:20*count]
+    del(airport['Mac addresses access control addresses']) 
+    del(airport['Host names for access control'])
+    airport['Access Control'] = []
+    for i in range(count):
+        airport['Access Control'].append((mac(macs[6*i:(6*i)+6]), string0(names[20*i:(20*i)+20])))
     return airport
 
 
 def printconf(airport):
-    for k in airport.keys():
-        print "%s: %s" % (k, airport[k])
-
+    '''Return the configuration in a human and machine readable format.'''
+    
+    l = airport.keys()
+    l.sort()
+    pp = pprint.PrettyPrinter()
+    out = []
+    for k in l:
+        out.append("%s: %s" % (k, pp.pformat(airport[k])))
+    return "config = {%s}" % ',\n'.join(out)
 
 def writeconf(host, community, data):
-    '''Rop writes:
+    '''Write configuration Data to an Airport.
+
+    Rop writes:
 
     Writing to flash
 
     Writing to flash is done by writing to
-    1.3.6.1.4.1.762.2.3.1.1.&ltn>, writing the 256 bytes starting at
+    1.3.6.1.4.1.762.2.3.1.1.n, writing the 256 bytes starting at
     position (n - 1) * 256. The write is not actually done until the
     entire block to be written is received, and the length of the
     block is written as an integer to 1.3.6.1.4.1.762.2.1.2.0 and
@@ -288,87 +365,120 @@ def writeconf(host, community, data):
     such name' error.
     '''
 
-
-    print "*** writing"
     s = session.session (host, community)
     for i in range(0, 68):
-        print '* block', i, i*256, (i+1)*256, len(data[i*256:(i+1)*256]),
-
         encoded_objid = s.encode_oid ([1, 3, 6, 1, 4, 1, 762, 2, 3, 1, 1, i+1])
-    
-        # BER encode the values of MIB variables (assuming they are strings!)
         encoded_value = s.encode_string(data[i*256:(i+1)*256])
-
-        # Build a complete SNMP message of type 'SETREQUEST', pass it lists
-        # of BER encoded Object ID's and MIB variables' values associated
-        # with these Object ID's to set at SNMP agent.
         question = s.encode_request('SETREQUEST', [encoded_objid], [encoded_value])
-        
-        # Try to send SNMP message to SNMP agent and receive a response.
         answer = s.send_and_receive (question)
-        
-        # As we get a response from SNMP agent, try to disassemble SNMP reply
-        # and extract two lists of BER encoded SNMP Object ID's and 
-        # associated values).
+        # we don't need this - do we?
         (encoded_objids, encoded_values) = s.decode_response (answer)
-        
-        # Decode BER encoded Object ID.
         objids = map (s.decode_value, encoded_objids)
-        
-        # Decode BER encoded values associated with Object ID's.
         values = map (s.decode_value, encoded_values)
 
-
-    print "\n* writing to flash"
+    # "writing to flash"
     encoded_objid = s.encode_oid ([1,3,6,1,4,1,762,2,1,2,0])
-    
-    # BER encode the values of MIB variables (assuming they are strings!)
     encoded_value = s.encode_integer(17336)
-    
-    # Build a complete SNMP message of type 'SETREQUEST', pass it lists
-    # of BER encoded Object ID's and MIB variables' values associated
-    # with these Object ID's to set at SNMP agent.
     question = s.encode_request('SETREQUEST', [encoded_objid], [encoded_value])
-    
-    # Try to send SNMP message to SNMP agent and receive a response.
     answer = s.send_and_receive (question)
-    
-    # As we get a response from SNMP agent, try to disassemble SNMP reply
-    # and extract two lists of BER encoded SNMP Object ID's and 
-    # associated values).
+
+    # unneeded
     (encoded_objids, encoded_values) = s.decode_response (answer)
-    
-    # Decode BER encoded Object ID.
     objids = map (s.decode_value, encoded_objids)
-    
-    # Decode BER encoded values associated with Object ID's.
     values = map (s.decode_value, encoded_values)
-    
-    # Return a tuple of two lists holding Object ID's and associated
-    # values extracted from SNMP agent reply.
-    
+
     encoded_objid = s.encode_oid ([1,3,6,1,4,1,762,2,1,3,0])
-    
-    # BER encode the values of MIB variables (assuming they are strings!)
     encoded_value = s.encode_integer(17336)
-    
-    # Build a complete SNMP message of type 'SETREQUEST', pass it lists
-    # of BER encoded Object ID's and MIB variables' values associated
-    # with these Object ID's to set at SNMP agent.
     question = s.encode_request('SETREQUEST', [encoded_objid], [encoded_value])
-    
-    # Try to send SNMP message to SNMP agent and receive a response.
     answer = s.send_and_receive (question)
-    
-    # As we get a response from SNMP agent, try to disassemble SNMP reply
-    # and extract two lists of BER encoded SNMP Object ID's and 
-    # associated values).
+
+    # unneeded
     (encoded_objids, encoded_values) = s.decode_response (answer)
-        
-    # Decode BER encoded Object ID.
     objids = map (s.decode_value, encoded_objids)
-    
-    # Decode BER encoded values associated with Object ID's.
     values = map (s.decode_value, encoded_values)
     
 
+def scanforbases(broadcast):
+    """Takes a broadcast addresses and returns a list of Base Stations in this Network.
+
+    We return a list of tuples consisting of (IP Address, Access Point
+    Name, Vendor Name, MAC Address).
+
+    This is done by sending a UDP packet containing ('\001' + ('\000' *
+    115)) to the local subnet broadcast address and listening for
+    replies. If no reply is recived for more than 2 seconds this module
+    stops listening.
+    
+    Based on osubcast.c by Bill Fenner <fenner@research.att.com>.
+    
+    Rop writes:
+    
+    Discovery of Base Stations
+    
+    Discovery is done by the configuration program by sending a broadcast
+    UDP packet to port 192. The packet should contains 0x01, followed by
+    115 times 0x00, making a total of decimal 116 bytes (hex 74)
+    
+    The Base Stations then respond with a UDP packet from port 192, back
+    to the originating IP-number and port. This packet is built as
+    follows:
+    
+    offset(hex)     length          meaning 
+    00              1               always 01 
+    01              1               always 01 
+    03              1               00 means normal mode,  
+                                    01 means virgin 
+    24              6               MAC-address of Base 
+    2C              4               IP-number of Base 
+    30              ?               Name of Base,  
+                                    zero padded at right 
+    50              4               1/100th of seconds since  
+                                    boot 
+    54              ?               Version and serial no. of 
+                                    Base Station, zero  
+                                    terminated, maximum 20 hex 
+                                    bytes. 
+
+   The name of a virgin base station is always XX-XX-XX-XX-XX-XX, where
+   the Xs are replaced with the MAC-address of the Base.
+
+   """
+  
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    s.sendto('\001' + ('\000' * 115), (broadcast, 192))
+
+    ret = []
+    while 1:
+        (iwtd, owtd, ewtd) = select.select([s], [], [], 2)
+        if len(iwtd) == 0:
+            break
+        (data, addr) = s.recvfrom(128)
+
+        # parse reply
+        ip = addr[0]
+        if len(data) != 116:
+            print "%s, weird len %d (%r)\n" % (ip, len(data), data)
+
+        ap_name = []
+        for c in data[0x30:]:
+            if c == '\0':
+                break
+            ap_name.append(c)
+        ap_name = ''.join(ap_name)
+        
+        vendor = []
+        for c in data[0x54:]:
+            if c == '\0':
+                break
+            vendor.append(c)
+        vendor = ''.join(vendor)
+    
+        mac = []
+        for c in data[0x24:0x2a]:
+            mac.append(hex(ord(c))[2:])
+        mac = ':'.join(mac)
+    
+        ret.append((addr[0], ap_name, vendor, mac))
+    
+    return ret

@@ -1,20 +1,25 @@
 #!/usr/bin/env python
 
-# $Id: airport_aclupdate,v 1.1 2002/01/26 16:20:40 drt Exp $
+# $Id: airport_aclupdate,v 1.2 2002/01/26 21:59:15 drt Exp $
 
 """Update ACLs in several Apple Airport Base Stations at once.
 
   --drt@un.bewaff.net - http://c0re.jp/c0de/airconf/
 """
 
+# this is the path to our configuration
+etcpath = '/usr/local/etc'
+#etcpath = '.' 
+
 import sys
 import re
+import os.path
 import airport
 
 aclre = re.compile("^([0-9abcdefABCDEF][0-9abcdefABCDEF]?:[0-9abcdefABCDEF][0-9abcdefABCDEF]?:[0-9abcdefABCDEF][0-9abcdefABCDEF]?:[0-9abcdefABCDEF][0-9abcdefABCDEF]?:[0-9abcdefABCDEF][0-9abcdefABCDEF]?:[0-9abcdefABCDEF][0-9abcdefABCDEF]?)\s+(.*)$")
 hostre = re.compile("^(\S+)\s+(.*)$")
 
-fd = open('airport.acl')
+fd = open(os.path.join(aclpath, 'airport.acl'))
 line = 0
 acllist = []
 for x in fd.xreadlines():
@@ -33,13 +38,12 @@ for x in fd.xreadlines():
         sys.exit(1)
     acllist.append((mac, name))
 fd.close()
-
 if len(acllist) > 497:
     print >>sys.stderr, "Airports only support up to 497 ACL entries, you have given %s" % (len(acllist))
     sys.exit(1)
     
 
-fd = open('airport.hosts')
+fd = open(os.path.join(aclpath, 'airport.bases')
 line = 0
 hostlist= []
 for x in fd.xreadlines():
@@ -57,12 +61,17 @@ for x in fd.xreadlines():
 
 # update each AP
 for (host, community) in hostlist:
-    print "host %s ..." % (host),
+    print "base %s ..." % (host),
     # read config
     print "reading,", 
     data = airport.readconf(host, community)
     # change config
-    print "updating config,"
+    print "updating config,",
     data = airport.updateacl(data, acllist)
     # calculate checksum
+    print "calculating checksum,",
+    data = airport.calcchecksum(data)
     # write config
+    print "writing config to base,",
+    data = airport.writeconf(host, community, data)
+    print "done"
