@@ -1,0 +1,68 @@
+#!/usr/bin/env python
+
+# $Id: airport_aclupdate,v 1.1 2002/01/26 16:20:40 drt Exp $
+
+"""Update ACLs in several Apple Airport Base Stations at once.
+
+  --drt@un.bewaff.net - http://c0re.jp/c0de/airconf/
+"""
+
+import sys
+import re
+import airport
+
+aclre = re.compile("^([0-9abcdefABCDEF][0-9abcdefABCDEF]?:[0-9abcdefABCDEF][0-9abcdefABCDEF]?:[0-9abcdefABCDEF][0-9abcdefABCDEF]?:[0-9abcdefABCDEF][0-9abcdefABCDEF]?:[0-9abcdefABCDEF][0-9abcdefABCDEF]?:[0-9abcdefABCDEF][0-9abcdefABCDEF]?)\s+(.*)$")
+hostre = re.compile("^(\S+)\s+(.*)$")
+
+fd = open('airport.acl')
+line = 0
+acllist = []
+for x in fd.xreadlines():
+    line += 1
+    if x[-1] == '\n':
+        x = x[:-1]
+    if len(x) < 1 or x[0] == '#':
+        continue
+    m = aclre.match(x)
+    if m == None:
+        print >>sys.stderr, "Line %d: can't parse line %r in airport.acl,\n\tuse something like 'AA:AA:AA:AA:AA:AA name'" % (line, x)
+        sys.exit(1)
+    (mac, name) = m.groups()
+    if len(name) > 19:
+        print >>sys.stderr, "Line %d: name is to long (max. 19 characters allowed): %r" % (line, x)
+        sys.exit(1)
+    acllist.append((mac, name))
+fd.close()
+
+if len(acllist) > 497:
+    print >>sys.stderr, "Airports only support up to 497 ACL entries, you have given %s" % (len(acllist))
+    sys.exit(1)
+    
+
+fd = open('airport.hosts')
+line = 0
+hostlist= []
+for x in fd.xreadlines():
+    line += 1
+    if x[-1] == '\n':
+        x = x[:-1]
+    if len(x) < 1 or x[0] == '#':
+        continue
+    m = hostre.match(x)
+    if m == None:
+        print >>sys.stderr, "Line %d: can't parse line %r in airport.hosts,\n\tuse something like '10.1.2.3 public'" % (line, x)
+        sys.exit(1)
+    (host, community) = m.groups()
+    hostlist.append((host, community))
+
+# update each AP
+for (host, community) in hostlist:
+    print "host %s ..." % (host),
+    # read config
+    print "reading,", 
+    data = airport.readconf(host, community)
+    # change config
+    print "updating config,"
+    data = airport.updateacl(data, acllist)
+    # calculate checksum
+    # write config
