@@ -15,12 +15,12 @@ control lists at once copy type following commands:
 
 install -c -m 755 -d airport_aclupdate /usr/local/bin
 install -c -m 600 -d airport.acl /usr/local/etc
-install -c -m 600 -d airport.hosts /usr/local/etc
+install -c -m 600 -d airport.bases /usr/local/etc
 python setup.py install
 rehash
 
 If you like different Directories you have to edit 'etcdir' at the
-beginning of airport_aclupdate. Edit /usr/local/etc/airport.hosts to
+beginning of airport_aclupdate. Edit /usr/local/etc/airport.bases to
 contain the IP addresses and passwords/community strings of all the
 Basestations you like to update. Edit /usr/local/etc/airport.acl to
 contain a list of all MAC addresses which should be allowed to access
