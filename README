@@ -7,8 +7,16 @@ airconf is also a Python framework for detecting Apple Airport Base
 Stations (White and Graphite), reading, printing and changing their
 configurtation (only Graphite).
 
-Airconf has been tested under different dialects of Unix and Python
+airconf has been tested under different dialects of Unix and Python
 2.2 but should also work with Python 2.x, MacOS 9 and Windows.
+
+airconf uses pysnmp a pure Python module which can be found at
+http://pysnmp.sourceforge.net/ To install it type something like this:
+
+wget http://download.sourceforge.net/pysnmp/pysnmp-1.6.5.tar.gz
+tar xzvf pysnmp-1.6.5.tar.gz
+cd pysnmp-1.6.5
+python setup.py install
 
 To use airport_aclupdate to update several Airport Basestation Access
 control lists at once copy type following commands:
