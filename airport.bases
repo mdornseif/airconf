@@ -1,0 +1,6 @@
+# $Id: airport.bases,v 1.1 2002/01/26 21:57:02 drt Exp $
+# example list of Airport Bases stations for airport_aclupdate
+# <airport ip> <password>
+172.17.0.8 geheim
+172.17.0.6 verratichnich
+

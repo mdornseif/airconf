@@ -1,0 +1,8 @@
+* Check if ACL update succeeded
+* Resume with next if a single Airport isn't reachable
+* Add Support for all Airport configuration Options
+* Test with other firmware versions
+* Add capabilitiees to change airport configuration via config files
+* Support for Airport 2
+
+  --drt@un.bewaff.net

@@ -1,0 +1,7 @@
+# $Id: airport.acl,v 1.1 2002/01/26 21:51:56 drt Exp $
+# This is a sample ACL file for airconf
+# Structure:
+# <mac> <name> 
+# where name might not be longer than 19 characters. e.g.
+00:50:e4:05:e7:44 Powerbook G3
+c0:de:ca:fe:00:00 another host
