@@ -1,4 +1,4 @@
-""" $Id: airport_detect.py,v 1.1 2002/01/22 01:07:00 drt Exp $
+""" $Id: airport_detect.py,v 1.2 2002/01/23 13:14:56 drt Exp $
 
 Find all Apple Airport APs on a subnet.
 
@@ -6,6 +6,8 @@ This is done by sending a UDP packet containing ('\001' + ('\000' *
 115)) to the local subnet broadcast address and listening for
 replies. If no reply is recived for more than 2 seconds this module
 stops listening.
+
+Based on osubcast.c by Bill Fenner <fenner@research.att.com>.
 
 You might be able to find more Information at http://c0re.jp/
 
