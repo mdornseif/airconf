@@ -7,9 +7,35 @@ airconf is also a Python framework for detecting Apple Airport Base
 Stations (White and Graphite), reading, printing and changing their
 configurtation (only Graphite).
 
-More information might be found at http://c0re.jp/c0de/airconf/
+Airconf has been tested under different dialects of Unix and Python
+2.2 but should also work with Python 2.x, MacOS 9 and Windows.
 
-call 'python airport_detect.py <broadcast>' to get a list of airport
+To use airport_aclupdate to update several Airport Basestation Access
+control lists at once copy type following commands:
+
+install -c -m 755 -d airport_aclupdate /usr/local/bin
+install -c -m 600 -d airport.acl /usr/local/etc
+install -c -m 600 -d airport.hosts /usr/local/etc
+python setup.py install
+rehash
+
+If you like different Directories you have to edit 'etcdir' at the
+beginning of airport_aclupdate. Edit /usr/local/etc/airport.hosts to
+contain the IP addresses and passwords/community strings of all the
+Basestations you like to update. Edit /usr/local/etc/airport.acl to
+contain a list of all MAC addresses which should be allowed to access
+the Wireless network. After each MAC address you can add up to 19
+characters of description. Call airport_aclupdate and watch it
+updating and rebooting your Bases. 
+
+Call 'python airport_detect.py <broadcast>' to get a list of airport
 base stations in a certain subnet.
 
+If you want to use the python module read the output of 
+'pydoc -w airport'.
 
+This tool builds on Work by Bill Fenner, Jonathan Sevy and Rop
+Gonggrijp.
+
+More information might be found at http://c0re.jp/c0de/airconf/
+  --drt@un.bewaff.net
