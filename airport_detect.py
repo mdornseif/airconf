@@ -1,4 +1,4 @@
-""" $Id: airport_detect.py,v 1.3 2002/01/23 20:48:56 drt Exp $
+""" $Id: airport_detect.py,v 1.4 2002/01/24 21:27:16 drt Exp $
 
 Find all Apple Airport APs on a subnet.
 
@@ -89,4 +89,4 @@ while 1:
         mac.append(hex(ord(c))[2:])
     mac = ':'.join(mac)
 
-    print repr(ap_name), repr(vendor), repr(mac)
+    print addr[1], repr(ap_name), repr(vendor), repr(mac)

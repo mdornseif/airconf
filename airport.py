@@ -1,12 +1,18 @@
+"""Handling of Communication with Apple Airport 1 (Graphite).
+
+  --drt@un.bewaff.net
+"""
+
+import sys
 from pysnmp import session
 
 karl = '.1.3.6.1.4.1.762'
 conf = karl + ".2.3.1.1"
 
 
+# various helper functions to mangle data
 def ip4(s):
     return '.'.join(map(str, map(ord, s)))
-
 
 def string0(s):
     if len(s) == 0:
@@ -14,11 +20,12 @@ def string0(s):
     if s[-1] == '\x00':
         return string0(s[:-1])
     return s
-
     
 def short(s):
     return ord(s)
 
+def litteendianint(s):
+    return ord(s[1]) + (ord(s[0]) << 8)
 
 def raw(s):
     return s
@@ -41,7 +48,7 @@ initial index of 0).
 
 '''
 
-    
+# definition of the configuration memory block
 image = {'copyright': (6, 68, {}, string0),
          'public': (7 * 16 + 6, 6, {}, string0),
          'set password (?)': (9 * 16 + 6, 9, {}, string0),
@@ -94,7 +101,7 @@ image = {'copyright': (6, 68, {}, string0),
          'Domain name (from DNS setting window)': (13 * 256 + 10, 32, {}, string0),
          'Wireless LAN IP address when NAT enabled': (13 * 256 + 2*16 + 10, 4, {}, ip4),
          'IP address when connected through Ethernet': (13 * 256 +4*16 + 10, 4, {}, ip4),
-         'Mac addresses access control count': (15 * 256 + 8*16 + 7, 3, {}, repr), 
+         'Mac addresses access control count': (15 * 256 + 8*16 + 8, 2, {}, litteendianint), 
          'Mac addresses access control addresses': (15 * 256 + 8*16 + 10, 497 * 6, {}, repr),
          'Host names for access control': (28 * 256 + 12*16 + 8, 497 * 20, {}, repr),
          'Checksum 1':  (256 * 67 + 11*16 + 6, 2, {}, repr),
@@ -115,6 +122,8 @@ fixups = {'Network Name': (['Network name 1', 'Network name 2',
 
 
 '''
+This should be incoperated:
+
 Encryption flag fields: 
 byte 5*16 + 8
 00 = no encryption
@@ -183,93 +192,79 @@ Checksum 2: bytes 11*16 + 8,9:  sum of all previous bytes, including preceding c
 
 '''
 
-s = session.session ('172.17.0.8', 'public')
-encoded_objid = s.encode_oid ([1, 3, 6, 1, 2, 1, 1, 1, 0])
-print encoded_objid 
-question = s.encode_request ('GETREQUEST', [encoded_objid], [])
-answer = s.send_and_receive (question)
-(encoded_objids, encoded_values) = s.decode_response (answer)
-objids = map (s.decode_value, encoded_objids)
-#print objids
+def readconf(host, community):
+    '''reat  configuration data from Airport.
 
-values = map (s.decode_value, encoded_values)
-#print values
-
-
-# get configuration data
-
-'''Rop writes:
-Reading from flash
-
-Reading is done by issuing SNMP get-requests for
-1.3.6.1.4.1.762.2.2.1.1.n. This request will then return a
-string containing a 256 byte block having offset (n - 1) *
-256. Example: to read the configuration block, one would issue SNMP
-get-requests for 1.3.6.1.4.1.762.2.2.1.1.1 through
-1.3.6.1.4.1.762.2.2.1.1.68.
-'''
-
-s = session.session ('172.17.0.8', '2407')
-data = ''
-for i in range(1, 69):
-    encoded_objid = s.encode_oid ([1, 3, 6, 1, 4, 1, 762, 2, 2, 1, 1, i])
-    question = s.encode_request ('GETREQUEST', [encoded_objid], [])
-    answer = s.send_and_receive (question)
-    (encoded_objids, encoded_values) = s.decode_response (answer)
-    objids = map (s.decode_value, encoded_objids)
-    values = map (s.decode_value, encoded_values)
-    data += values[0]
-
-fd =open('config.dat', 'w')
-fd.write(data)
-fd.close()
-
-datal = list(data)
-# 'Mac addresses access control count'
-#datal[15 * 256 + 8*16 + 7] = chr(128)
-#datal[15 * 256 + 8*16 + 7] = chr(1)
-# Mac addresses access control addresses'
-#datal[15*256+8*16+10:15*256+8*16+10+(128*6)] = ['A'] * (128*6)
-# 'Host names for access control'
-#datal[28*256+12*16+8:28*256+12*16+8+(128*20)] = ['A'] * (128*20)
-
-#datal[7*16+6:7*16+12] = list('public')
-
-
-# delete date "after the end" and calculate checksum
-#datal[0x43b5:] = ['\0x00'] * 256 
-checksum1 = 0
-for x in data[:0x43b6]:
-    checksum1 += ord(x)
-checksum2 = checksum1 + ((checksum1 >> 8) & 0xff) + (checksum1 & 0xff)
-datal[0x43b6] = chr(checksum1 & 0xff)
-datal[0x43b7] = chr((checksum1 >> 8) & 0xff)
-datal[0x43b8] = chr(checksum2 & 0xff)
-datal[0x43b9] = chr((checksum2 >> 8) & 0xff)
-data = ''.join(datal)
+    Rop writes:
+    Reading from flash
     
-# read items out of data
-airport = {}
-for k in image.keys():
-    (pos, length, desc, func) = image[k]
-    airport[k] = apply(func, [data[pos:pos + length]])
+    Reading is done by issuing SNMP get-requests for
+    1.3.6.1.4.1.762.2.2.1.1.n. This request will then return a string
+    containing a 256 byte block having offset (n - 1) * 256. Example:
+    to read the configuration block, one would issue SNMP get-requests
+    for 1.3.6.1.4.1.762.2.2.1.1.1 through 1.3.6.1.4.1.762.2.2.1.1.68.
 
- 
-for l in fixups.keys():
-    val = ''
-    (fixuplist, func) = fixups[l]
-    for x in fixuplist:
-        val += airport[x]
-        del(airport[x])
-    airport[l] = apply(func, [val])
+    '''
 
-for k in airport.keys():
-    print "%s: %s" % (k, airport[k])
+    s = session.session (host, community)
+    data = ''
+    for i in range(1, 69):
+        encoded_objid = s.encode_oid ([1, 3, 6, 1, 4, 1, 762, 2, 2, 1, 1, i])
+        question = s.encode_request ('GETREQUEST', [encoded_objid], [])
+        answer = s.send_and_receive (question)
+        (encoded_objids, encoded_values) = s.decode_response (answer)
+        objids = map (s.decode_value, encoded_objids)
+        values = map (s.decode_value, encoded_values)
+        data += values[0]
+
+    s.close()
+    del(s)
+    return data
 
 
+#datal[0x96:0x9a] = list('2407')
 
-s.close()
-del(s)
+def calcchecksum(data):
+    datal = list(data)
+    # delete data "after the end" and calculate checksum
+    datal[0x43ba:] = ['\0'] * 70 
+    checksum1 = 0
+    for x in data[:0x43b6]:
+        checksum1 += ord(x)
+    checksum2 = checksum1 + ((checksum1 >> 8) & 0xff) + (checksum1 & 0xff)
+    # uh, checksum 1 seems to be useless ... strange
+    #datal[0x43b6] = chr(checksum1 & 0xff)
+    #datal[0x43b7] = chr((checksum1 >> 8) & 0xff)
+    checksum2 = 0
+    for x in datal[:0x43b8]:
+        checksum2 += ord(x)
+    datal[0x43b8] = chr(checksum2 & 0xff)
+    datal[0x43b9] = chr((checksum2 >> 8) & 0xff)
+    print >>sys.stderr, checksum1, checksum2
+    return ''.join(datal)
+
+
+def parseconf(data):
+    airport = {}
+    for k in image.keys():
+        (pos, length, desc, func) = image[k]
+        airport[k] = apply(func, [data[pos:pos + length]])
+
+    for l in fixups.keys():
+        val = ''
+        (fixuplist, func) = fixups[l]
+        for x in fixuplist:
+            val += airport[x]
+            del(airport[x])
+        airport[l] = apply(func, [val])
+
+    return airport
+
+
+def printconf(airport):
+    for k in airport.keys():
+        print "%s: %s" % (k, airport[k])
+
 
 def writeconf(host, community, data):
     '''Rop writes:
@@ -376,8 +371,4 @@ def writeconf(host, community, data):
     # Decode BER encoded values associated with Object ID's.
     values = map (s.decode_value, encoded_values)
     
-    # Return a tuple of two lists holding Object ID's and associated
-    # values extracted from SNMP agent reply.
 
-
-writeconf('172.17.0.8', '2407', data)
