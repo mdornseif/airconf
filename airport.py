@@ -1,4 +1,4 @@
-# $Id: airport.py,v 1.2 2002/01/26 21:59:15 drt Exp $
+# $Id: airport.py,v 1.3 2002/02/02 17:27:23 drt Exp $
 
 """Handling of Communication with Apple Airport Base Station 1 (Graphite).
 
@@ -75,64 +75,79 @@ initial index of 0).
 
 '''
 
+
 # definition of the raw configuration memory block
-image = {'copyright': (6, 68, {}, string0),
-         'public': (7 * 16 + 6, 6, {}, string0),
-         'set password (?)': (9 * 16 + 6, 9, {}, string0),
+# this is {name: (position, length, possible values, formatting, description, user editable)}
+EDITABLE = 1
+NOTEDITABLE = 0
+
+image = {'copyright': (6, 68, {}, string0, "", NOTEDITABLE),
+         'public': (7 * 16 + 6, 6, {}, string0, "", NOTEDITABLE),
+         'set password (?)': (9 * 16 + 6, 9, {}, string0, "", NOTEDITABLE),
          'Ethernet DHCP switch': (256 +  1 * 16 + 7, 1,
                                   {0x00: "don't provide addresses on Ethernet",
                                    0x40: "provide addresses on Ethernet / configure base station manually",
-                                   0x60: "configure base station using DHCP"}, short),
+                                   0x60: "configure base station using DHCP"}, short, """TODO""", EDITABLE),
          'Ethernet/Modem switch 1': (256 + 10, 1,
                                      {0x62: 'modem',
-                                      0x60: 'ethernet'}, short),
+                                      0x60: 'ethernet'}, short, """TODO""", EDITABLE),
          'Ethernet/Modem switch 2': (256 * 5 + 6 * 16, 1,
                                      {0x03: 'modem',
-                                      0x00: 'Ethernet'}, short),
-         'Wireless channel': (256 + 7*16 + 8, 1, {}, short),
-         'Network name 1': (256 + 12 * 16 + 8, 2, {}, string0),
-         'Network name 2': (256 + 13 * 16 + 8, 2, {}, string0),
-         'Network name 3': (256 + 14 * 16 + 8, 2, {}, string0),
-         'Network name 4': (256 + 15 * 16 + 8, 2, {}, string0),
-         'Network name 5': (256 + 16 * 16 + 8, 2, {}, string0),
-         'Network name 6': (256 + 17 * 16 + 8, 2, {}, string0),
-         'Network name 7': (256 + 18 * 16 + 8, 2, {}, string0),
-         'Network name 8': (256 + 19 * 16 + 8, 2, {}, string0),
-         'Network name 9': (256 + 20 * 16 + 8, 2, {}, string0),
-         'Network name 10': (256 + 21 * 16 + 8, 2, {}, string0),
-         'Network name 11': (256 + 22 * 16 + 8, 2, {}, string0),
-         'Network name 12': (256 + 23 * 16 + 8, 2, {}, string0),
-         'Network name 13': (256 + 24 * 16 + 8, 2, {}, string0),
-         'Network name 14': (256 + 25 * 16 + 8, 2, {}, string0),
-         'Network name 15': (256 + 26 * 16 + 8, 2, {}, string0),
-         'Network name 16': (256 + 27 * 16 + 8, 2, {}, string0),
+                                      0x00: 'Ethernet'}, short, """TODO""", EDITABLE),
+         'Wireless channel': (256 + 7*16 + 8, 1, {}, short,
+                              """Frequency at which the base station should operate.
+                              Something between 1 and 13 depending on your region.
+                              1-13 is OK in the EU.""", EDITABLE),
+         'Network name 1': (256 + 12 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 2': (256 + 13 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 3': (256 + 14 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 4': (256 + 15 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 5': (256 + 16 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 6': (256 + 17 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 7': (256 + 18 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 8': (256 + 19 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 9': (256 + 20 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 10': (256 + 21 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 11': (256 + 22 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 12': (256 + 23 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 13': (256 + 24 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 14': (256 + 25 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 15': (256 + 26 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
+         'Network name 16': (256 + 27 * 16 + 8, 2, {}, string0, "", NOTEDITABLE),
          'DHCP/NAT switch': (4 * 256 + 4 * 16 + 9, 1, 
                              {0x00: 'none (act as transparent bridge)',
                               0x80: 'DHCP on, using specified range of IP addresses', 
                               0x82: 'DHCP plus NAT on, using default range of IP addresses', 
                               0x84: 'DHCP only, plus port mapping (firewall functionality?)',
-                              0x86: 'DHCP and NAT, with port-mapping'}, short),
-         'Base station IP address': (4 * 256 + 6 * 16 + 10, 4, {}, ip4),
-         'Base station partial mask': (4 * 256 + 6 * 16 + 14, 2, {}, raw),
-         'Router IP address': (4 * 256 + 7 * 16, 4, {}, ip4),
-         'Router Netmask': (4 * 256 + 7 * 16 + 4, 4, {}, ip4),
-         'Contact person name': (4 * 256 + 8 * 16 + 12, 64, {}, string0),
-         'Base station name':  (4 * 256 + 12 * 16 + 12, 64, {}, string0),
-         'Location string': (5 * 256 + 12, 64, {}, string0),
-         'DHCP address range start': (12 * 256 + 15*16 + 2, 4, {}, ip4),
-         'DHCP address range end': (12 * 256 + 15*16 + 6, 4, {}, ip4),
-         'Primary DNS 1': (12 * 256 + 15*16 + 10, 2, {}, raw),
-         'Secondary DNS 1': (12 * 256 + 15*16 + 12, 2, {}, raw),
-         'Primary DNS 2': (12 * 256 + 16*16, 2, {}, raw),
-         'Secondary DNS 2': (12 * 256 + 15*16 + 2, 2, {}, raw),
-         'Domain name (from DNS setting window)': (13 * 256 + 10, 32, {}, string0),
-         'Wireless LAN IP address when NAT enabled': (13 * 256 + 2*16 + 10, 4, {}, ip4),
-         'IP address when connected through Ethernet': (13 * 256 +4*16 + 10, 4, {}, ip4),
-         'Mac addresses access control count': (15 * 256 + 8*16 + 8, 2, {}, litteendianint), 
-         'Mac addresses access control addresses': (15 * 256 + 8*16 + 10, 497 * 6, {}, raw),
-         'Host names for access control': (0x1cc8, 497 * 20, {}, raw),
-         'Checksum 1':  (256 * 67 + 11*16 + 6, 2, {}, raw),
-         'Checksum 2':  (256 * 67 + 11*16 + 8, 2, {}, raw)
+                              0x86: 'DHCP and NAT, with port-mapping'}, short, """TODO""", EDITABLE),
+         'Base station IP address': (4 * 256 + 6 * 16 + 10, 4, {}, ip4, """TODO""", EDITABLE),
+         'Base station partial mask': (4 * 256 + 6 * 16 + 14, 2, {}, raw, """TODO""", NOTEDITABLE),
+         'Router IP address': (4 * 256 + 7 * 16, 4, {}, ip4,  """TODO""", EDITABLE),
+         'Router Netmask': (4 * 256 + 7 * 16 + 4, 4, {}, ip4, """TODO""", EDITABLE),
+         'Contact person name': (4 * 256 + 8 * 16 + 12, 64, {}, string0,  """TODO""", EDITABLE),
+         'Base station name':  (4 * 256 + 12 * 16 + 12, 64, {}, string0, """TODO""", EDITABLE),
+         'Location string': (5 * 256 + 12, 64, {}, string0, """""", EDITABLE),
+         'DHCP address range start': (12 * 256 + 15*16 + 2, 4, {}, ip4,  
+                             """First address which should be given out by DHCP if DHCP is enabled.
+                             See also 'DHCP/NAT switch'.""", EDITABLE),
+         'DHCP address range end': (12 * 256 + 15*16 + 6, 4, {}, ip4, 
+                                    """Last address which should be given out by DHCP.""", EDITABLE),
+         'Primary DNS 1': (12 * 256 + 15*16 + 10, 2, {}, raw,  """""", NOTEDITABLE),
+         'Secondary DNS 1': (12 * 256 + 15*16 + 12, 2, {}, raw, """""", NOTEDITABLE),
+         'Primary DNS 2': (12 * 256 + 16*16, 2, {}, raw, """""", NOTEDITABLE),
+         'Secondary DNS 2': (12 * 256 + 15*16 + 2, 2, {}, raw, """""", NOTEDITABLE),
+         'Domain name': (13 * 256 + 10, 32, {}, string0, 
+                         """Your local domain name. Use 'yourname.invalid' if you don't have one.""", EDITABLE),
+         'Wireless LAN IP address when NAT enabled': (13 * 256 + 2*16 + 10, 4, {}, ip4, """""", EDITABLE),
+         'IP address when connected through Ethernet': (13 * 256 +4*16 + 10, 4, {}, ip4, """""", EDITABLE),
+         'Mac addresses access control count': (15 * 256 + 8*16 + 8, 2, {}, litteendianint,
+                                                """The nummer of Addresses in the ACL.""", NOTEDITABLE), 
+         'Mac addresses access control addresses': (15 * 256 + 8*16 + 10, 497 * 6, {}, raw,
+                                                    """MAC Addresses in the ACL.""", NOTEDITABLE),
+         'Host names for access control': (0x1cc8, 497 * 20, {}, raw, 
+                                           """Hostnames in the ACL.""", NOTEDITABLE),
+         'Checksum 1':  (256 * 67 + 11*16 + 6, 2, {}, raw,  "", EDITABLE),
+         'Checksum 2':  (256 * 67 + 11*16 + 8, 2, {}, raw, "", EDITABLE)
 }
 
 # table to fix entries scattered arround in the configuration block
@@ -143,13 +158,28 @@ fixups = {'Network Name': (['Network name 1', 'Network name 2',
                            'Network name 9', 'Network name 10',
                            'Network name 11', 'Network name 12',
                            'Network name 13', 'Network name 14',
-                           'Network name 15', 'Network name 16'], raw),
-          'Primary DNS': (['Primary DNS 1', 'Primary DNS 2'], ip4),
-          'Secondary DNS': (['Secondary DNS 1', 'Secondary DNS 2'], ip4)}
+                           'Network name 15', 'Network name 16'], raw,
+                           """Name of your wireless Network.""", EDITABLE),
+          'Primary DNS': (['Primary DNS 1', 'Primary DNS 2'], ip4,
+                          """Your Primary DNS server.""", EDITABLE),
+          'Secondary DNS': (['Secondary DNS 1', 'Secondary DNS 2'], ip4,
+                            """Your Secondary DNS Server (optional).""", EDITABLE)}
 
 
-# This should be incoperated above but I myself don't really need it.:
+# when first importing this module be bouild a dictionary out of the various descriptions
+
+documentation = {'Access Control': ('TODO', EDITABLE)}
+for k in image.keys():
+    (pos, length, desc, func, doc, show) = image[k]
+    documentation[k] = (doc, show)
+for k in fixups.keys():
+    (fixuplist, func, doc, show) = fixups[k]
+    documentation[k] = (doc, show)
+
+# This should be incoperated above but I myself don't really need it:
 '''
+.1.3.6.1.4.1.762.2.3.1.1.63Username@domain, password
+byte 10*16 + 10: character count of dial-up username, username, character count of dial-up password, password.
 Encryption flag fields: 
 byte 5*16 + 8
 00 = no encryption
@@ -157,61 +187,40 @@ byte 5*16 + 8
 byte 6*16 + 8
 12 = no encryption
 92 = use encryption
-
 Modem timeout, in 10-second chunks: byte 7*16 + 10
-
 Dialing type: byte 7*16 + 11
 0D = tone
 04 = pulse
-
 Modem init string length: byte 8*16 + 9
-
 Phone number lengths:
 primary: byte 8*16 + 10;  secondary: byte 8*16 + 11
-
 Phone country code: byte 11*16 + 10,11: 
 US standard = 32 32
 Singapore = 34 37
 Switzerland = 31 35
-
 Modem initialization string and phone numbers: byte 12*16 + 10,
 continuation in columns 10 and 11 of subsequent rows
 phone numbers use BCD, with D for space/paren and E for dash
 primary number immediately follows modem init string; secondary number immediately follows primary number
-
 .1.3.6.1.4.1.762.2.3.1.1.3Extension of 2, plus:
 Encryption flag field: byte 12*16 + 8
 00 = no encryption
 01 = use encryption
-
 .1.3.6.1.4.1.762.2.3.1.1.4Encryption: 
 number of bytes: byte 7*16 + 4
 00 for no encryption
 05 for 40-bit encryption
 key: byte 7*16 + 6
-
-
 Port mapping functions: 
 count of port mappings: byte 6*16 + 2
 public port numbers: byte 12*16 + 2, in 2-byte pairs (?)
 first two octets of private IP addresses: byte 14*16 + 10,
  in 2-byte pairs (?)
-
 .1.3.6.1.4.1.762.2.3.1.1.15Port mapping functions: 
 last two octets of private IP addresses: byte 1*16 + 2,
  in 2-byte pairs (?)
 private port numbers: byte 3*16 + 10, in 2-byte pairs (?)
-
 .1.3.6.1.4.1.762.2.3.1.1.16Login info to transmit, if selected (username, password, perhaps "ppp"), plus weird separators: byte 8
-
-
-
-.1.3.6.1.4.1.762.2.3.1.1.63Username@domain, password
-byte 10*16 + 10: character count of dial-up username, username, character count of dial-up password, password.
-
-.1.3.6.1.4.1.762.2.3.1.1.68Checksum 1: bytes 11*16 + 6,7: sum of all previous bytes (treated as unsigned shorts), with result bytes reversed (i.e., little-endian)
-Checksum 2: bytes 11*16 + 8,9:  sum of all previous bytes, including preceding checksum, with result bytes reversed (i.e., little-endian) - special thanks to Bill Fenner for figuring this one out!
-
 '''
 
 def readconf(host, community):
@@ -306,17 +315,17 @@ def parseconf(data):
     
     airport = {}
     for k in image.keys():
-        (pos, length, desc, func) = image[k]
+        (pos, length, desc, func, doc, show) = image[k]
         airport[k] = apply(func, [data[pos:pos + length]])
 
     # fix scattered values
-    for l in fixups.keys():
+    for k in fixups.keys():
         val = ''
-        (fixuplist, func) = fixups[l]
+        (fixuplist, func, doc, show) = fixups[k]
         for x in fixuplist:
             val += airport[x]
             del(airport[x])
-        airport[l] = apply(func, [val])
+        airport[k] = apply(func, [val])
 
     # mangle access control lists into something more readable
     count = airport['Mac addresses access control count']
