@@ -1,3 +1,5 @@
+[![No Maintenance Intended](http://unmaintained.tech/badge.svg)](http://unmaintained.tech/)
+
 airconf is a tool for configuring the the Access Control Lists in
 several Apple Airport Base Stations at once. Today it supports only
 Base Station 1 (Graphite) based on Karl Bridge. Base Station 2 (White)
